@@ -24,8 +24,11 @@ namespace DocumentTranslationService.Core
         /// <exception cref="KeyVaultAccessException"/>
         public async Task<DocTransAppSettings> GetKVCredentialsAsync()
         {
-            SecretClient client = new(new Uri("https://" + KeyVaultName + ".vault.azure.net/"), new DefaultAzureCredential());
-            List<string> secretNames = new() { "AzureRegion", "AzureResourceName", "StorageConnectionString", "SubscriptionKey" };
+            string VaultUri;
+            if (KeyVaultName.Contains('.')) VaultUri = KeyVaultName;
+            else VaultUri = "https://" + KeyVaultName + ".vault.azure.net/";
+            SecretClient client = new(new Uri(VaultUri), new InteractiveBrowserCredential());
+            List<string> secretNames = new() { "AzureRegion", "AzureResourceName", "StorageConnectionString", "SubscriptionKey", "TextTransEndpoint" };
             List<Task<Azure.Response<KeyVaultSecret>>> tasks = new();
             Azure.Response<KeyVaultSecret>[] kvSecrets;
             foreach (string secret in secretNames) tasks.Add(client.GetSecretAsync(secret));
@@ -43,7 +46,11 @@ namespace DocumentTranslationService.Core
                 Debug.WriteLine($"Azure Key Vault: {ex.Message}");
                 throw new KeyVaultAccessException("msg_KeyVaultRequestFailed", ex);
             }
-            // catch more different exceptions here
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Azure Key Vault: {ex.Message}");
+                throw new KeyVaultAccessException("msg_KeyVaultRequestFailed", ex);
+            }
             DocTransAppSettings settings = new();
             foreach (var kvSecret in kvSecrets)
             {
@@ -61,6 +68,9 @@ namespace DocumentTranslationService.Core
                         break;
                     case "SubscriptionKey":
                         settings.SubscriptionKey = kvSecret.Value.Value;
+                        break;
+                    case "TextTransEndpoint":
+                        settings.TextTransEndpoint = kvSecret.Value.Value;
                         break;
                     default:
                         break;
