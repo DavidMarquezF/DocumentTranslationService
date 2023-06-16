@@ -15,7 +15,7 @@ namespace DocumentTranslationService.Core
         /// </summary>
         public Connectionstrings ConnectionStrings { get; set; }
         /// <summary>
-        /// The subscription key to use.
+        /// The resource key to use.
         /// </summary>
         public string SubscriptionKey { get; set; }
         /// <summary>
@@ -39,14 +39,36 @@ namespace DocumentTranslationService.Core
         /// Holds the Text Translation Endpoint
         /// </summary>
         public string TextTransEndpoint { get; set; }
+        /// <summary>
+        /// Holds the string for experimental flights
+        /// </summary>
+        public string FlightString { get; set; }
         public bool UsingKeyVault
         {
             get
             {
-                if (string.IsNullOrEmpty(AzureKeyVaultName)) return false;
+                if (string.IsNullOrEmpty(AzureKeyVaultName?.Trim())) return false;
                 else return true;
             }
         }
+        public bool UsingProxy
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(ProxyAddress?.Trim())) return false;
+                else if (ProxyUseDefaultCredentials) return true;
+                else return true;
+            }
+        }
+        /// <summary>
+        /// Whether to use user credentials when using a proxy
+        /// </summary>
+        public bool ProxyUseDefaultCredentials { get; set; }
+
+        /// <summary>
+        /// Proxy server address
+        /// </summary>
+        public string ProxyAddress { get; set; }
     }
 
     public class Connectionstrings
