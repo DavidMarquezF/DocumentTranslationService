@@ -12,7 +12,7 @@ namespace DocumentTranslationService.Core
         /// <summary>
         /// Holds the list of file formats after initial retrieval from Service
         /// </summary>
-        public IReadOnlyList<DocumentTranslationFileFormat> FileFormats { get; private set; }
+        public List<LocalFormats.LocalDocumentTranslationFileFormat> FileFormats { get; private set; } = new();
 
         public HashSet<string> Extensions { get; private set; } = new();
 
@@ -24,13 +24,13 @@ namespace DocumentTranslationService.Core
 
         public event EventHandler OnGlossaryFormatsUpdate;
 
-        public async Task<IReadOnlyList<DocumentTranslationFileFormat>> GetDocumentFormatsAsync()
+        public async Task<IReadOnlyList<LocalFormats.LocalDocumentTranslationFileFormat>> GetDocumentFormatsAsync()
         {
             if (FileFormats?.Count > 0) return FileFormats;
             else return await GetFormatsInternal();
         }
 
-        private async Task<IReadOnlyList<DocumentTranslationFileFormat>> GetFormatsInternal()
+        private async Task<IReadOnlyList<LocalFormats.LocalDocumentTranslationFileFormat>> GetFormatsInternal()
         {
             if (String.IsNullOrEmpty(AzureResourceName)) throw new CredentialsException("name");
             for (int i = 0; i < 3; i++)
@@ -44,14 +44,34 @@ namespace DocumentTranslationService.Core
                 {
                     if (ex.Status == 401 || ex.Status == 403) throw new CredentialsException(ex.Message, ex);
                 }
+                catch (System.AggregateException ex)
+                {
+                    throw new Exception("Unknown host: " + ex.Message, ex);
+                }
 
                 if (result?.Value.Count > 0)
                 {
                     Debug.WriteLine($"GetFormats: Response: {JsonSerializer.Serialize(result, new JsonSerializerOptions() { IncludeFields = true })}");
-                    FileFormats = result.Value;
                     foreach (var item in result.Value)
                     {
+                        //Add the file formats and extensions from the service
+                        FileFormats.Add(new LocalFormats.LocalDocumentTranslationFileFormat(item.Format, new List<string>((List<string>)item.FileExtensions)));
                         foreach (string ext in item.FileExtensions)
+                        {
+                            Extensions.Add(ext.ToLowerInvariant());
+                        }
+                    }
+                    //Add the formats and extensions for the locally provided formats
+                    foreach (var localFormat in LocalFormats.LocalFormats.Formats)
+                    {
+                        LocalFormats.LocalDocumentTranslationFileFormat localDocumentTranslationFileFormat = new(
+                            localFormat.Format,
+                            localFormat.FileExtensions,
+                            localFormat.ConvertToMarkdown,
+                            localFormat.ConvertFromMarkdown
+                        );
+                        FileFormats.Add(localDocumentTranslationFileFormat);
+                        foreach (string ext in localFormat.FileExtensions)
                         {
                             Extensions.Add(ext.ToLowerInvariant());
                         }
@@ -83,7 +103,7 @@ namespace DocumentTranslationService.Core
                 {
                     result = await documentTranslationClient.GetSupportedGlossaryFormatsAsync();
                 }
-                catch(Azure.RequestFailedException ex)
+                catch (Azure.RequestFailedException ex)
                 {
                     if (ex.Status == 401 || ex.Status == 403) throw new CredentialsException(ex.Message, ex);
                 }

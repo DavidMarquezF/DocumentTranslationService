@@ -9,7 +9,7 @@ namespace DocumentTranslationService.Core
 {
     partial class DocumentTranslationService
     {
-        
+
         /// <summary>
         /// Validate the credentials supplied as properties, and throw a CredentialsExceptions for the failing ones. 
         /// This is meant to be lightweight, but it is not free in terms of time and resources: The method makes
@@ -22,13 +22,15 @@ namespace DocumentTranslationService.Core
         /// </exception>
         public async Task TryCredentials()
         {
-            List<Task> credTestTasks = new();
-            //Test the subscription key
-            credTestTasks.Add(TryCredentialsKey(SubscriptionKey, AzureRegion, TextTransUri));
-            //Test the name of the resource
-            credTestTasks.Add(TryCredentialsName());
-            //Test the storage account
-            credTestTasks.Add(TryCredentialsStorage());
+            List<Task> credTestTasks = new()
+            {
+                //Test the resource key
+                TryCredentialsKey(SubscriptionKey, AzureRegion, TextTransUri),
+                //Test the name of the resource
+                TryCredentialsName(),
+                //Test the storage account
+                TryCredentialsStorage()
+            };
             await Task.WhenAll(credTestTasks);
             //Test for free subscription
             await TryPaidSubscription();
@@ -78,7 +80,7 @@ namespace DocumentTranslationService.Core
             request.Headers.Add("Ocp-Apim-Subscription-Key", subscriptionKey);
             if (azureRegion?.ToLowerInvariant() != "global") request.Headers.Add("Ocp-Apim-Subscription-Region", azureRegion);
             request.Content = new StringContent("[{ \"Text\": \"English\" }]", Encoding.UTF8, "application/json");
-            HttpClient client = new();
+            HttpClient client = HttpClientFactory.GetHttpClient();
             HttpResponseMessage response = await client.SendAsync(request);
             if (!response.IsSuccessStatusCode)
                 throw new CredentialsException("Invalid key, or key does not match region.");

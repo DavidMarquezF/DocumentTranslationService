@@ -1,11 +1,10 @@
-﻿using Azure.Storage.Blobs;
+﻿using Azure.AI.Translation.Document;
+using Azure.Storage.Blobs;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading.Tasks;
-using System.Text.Json;
-using Azure.AI.Translation.Document;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace DocumentTranslationService.Core
 {
@@ -23,7 +22,7 @@ namespace DocumentTranslationService.Core
         public string Category { get; set; }
 
         /// <summary>
-        /// Your Azure Translator subscription key. Get from properties of the Translator resource
+        /// Your Azure Translator resource key. Get from properties of the Translator resource
         /// </summary>
         public string SubscriptionKey { get; set; } = string.Empty;
 
@@ -43,8 +42,19 @@ namespace DocumentTranslationService.Core
         /// </summary>
         public string TextTransUri { get; set; } = string.Empty;
 
+        /// <summary>
+        /// Sets the string to be used as a flight
+        /// </summary>
+        public string FlightString { get; set; } = string.Empty;
+
         internal BlobContainerClient ContainerClientSource { get; set; }
         internal Dictionary<string, BlobContainerClient> ContainerClientTargets { get; set; } = new();
+
+        /// <summary>
+        /// Holds the Azure Http Status to check during the run of the translation 
+        /// </summary>
+        internal Azure.Response AzureHttpStatus;
+
         public DocumentTranslationOperation DocumentTranslationOperation { get => documentTranslationOperation; set => documentTranslationOperation = value; }
 
         private DocumentTranslationClient documentTranslationClient;
@@ -97,10 +107,14 @@ namespace DocumentTranslationService.Core
             string DocTransEndpoint;
             if (!AzureResourceName.Contains('.')) DocTransEndpoint = "https://" + AzureResourceName + baseUriTemplate;
             else DocTransEndpoint = AzureResourceName;
-            documentTranslationClient = new(new Uri(DocTransEndpoint), new Azure.AzureKeyCredential(SubscriptionKey));
-            List<Task> tasks = new();
-            tasks.Add(GetDocumentFormatsAsync());
-            tasks.Add(GetGlossaryFormatsAsync());
+            var options = new DocumentTranslationClientOptions();
+            if (!string.IsNullOrEmpty(FlightString)) options.AddPolicy(new FlightPolicy(FlightString.Trim()), Azure.Core.HttpPipelinePosition.PerCall);
+            documentTranslationClient = new(new Uri(DocTransEndpoint), new Azure.AzureKeyCredential(SubscriptionKey), options);
+            List<Task> tasks = new()
+            {
+                GetDocumentFormatsAsync(),
+                GetGlossaryFormatsAsync()
+            };
             try
             {
                 await Task.WhenAll(tasks);
@@ -110,7 +124,7 @@ namespace DocumentTranslationService.Core
             {
                 throw new CredentialsException(ex.Message, ex);
             }
-            if (OnInitializeComplete is not null) OnInitializeComplete(this, EventArgs.Empty);
+            OnInitializeComplete?.Invoke(this, EventArgs.Empty);
         }
 
         /// <summary>
@@ -119,8 +133,17 @@ namespace DocumentTranslationService.Core
         /// <returns></returns>
         public async Task<DocumentTranslationOperation> CheckStatusAsync()
         {
-            _ = await documentTranslationOperation.UpdateStatusAsync(cancellationToken);
-            return documentTranslationOperation;
+            for (int i = 0; i < 3; i++)
+            {
+                AzureHttpStatus = await documentTranslationOperation.UpdateStatusAsync(cancellationToken);
+                if (AzureHttpStatus.IsError)
+                {
+                    await Task.Delay(300);
+                    continue;
+                }
+                return documentTranslationOperation;
+            }
+            return null;
         }
 
         /// <summary>
@@ -158,6 +181,12 @@ namespace DocumentTranslationService.Core
                 Debug.WriteLine("Request failed: " + ex.Source + ": " + ex.Message);
                 throw new Exception(ex.Message);
             }
+            catch (System.InvalidOperationException ex)
+            {
+                Debug.WriteLine("Request failed: " + ex.Source + ": " + ex.Message);
+                throw new Exception(ex.Message);
+            }
+            await documentTranslationOperation.UpdateStatusAsync();
             Debug.WriteLine("Translation Request submitted. Status: " + documentTranslationOperation.Status);
             return documentTranslationOperation.Id;
         }

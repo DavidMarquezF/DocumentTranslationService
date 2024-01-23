@@ -63,13 +63,15 @@ namespace DocumentTranslationService.Core
             string textTransUri = TextTransUri;
             for (int i = 0; i < 3; i++) //retry loop
             {
-                HttpRequestMessage request = new();
-                request.Method = HttpMethod.Get;
+                HttpRequestMessage request = new()
+                {
+                    Method = HttpMethod.Get
+                };
                 request.Headers.AcceptLanguage.Add(new System.Net.Http.Headers.StringWithQualityHeaderValue(acceptLanguage));
                 request.RequestUri = showExperimental
                     ? new Uri($"{textTransUri}/languages?api-version=3.0&scope=translation&flight=experimental")
                     : new Uri($"{textTransUri}/languages?api-version=3.0&scope=translation");
-                HttpClient client = new();
+                HttpClient client = HttpClientFactory.GetHttpClient();
                 HttpResponseMessage response = await client.SendAsync(request);
 
                 if (response.IsSuccessStatusCode)
@@ -119,7 +121,7 @@ namespace DocumentTranslationService.Core
     /// <summary>
     /// Holds information about a language
     /// </summary>
-    public class Language :ICloneable
+    public class Language : ICloneable
     {
         public Language(string langCode, string name)
         {

@@ -11,6 +11,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 #endregion
 
@@ -28,7 +29,7 @@ namespace DocumentTranslationService.Core
         private const int maxrequestsize = 5000;   //service size is 5000
 
         public static int Maxrequestsize { get => maxrequestsize; }
-        
+
         public enum ContentType { plain, HTML };
         #endregion
 
@@ -43,7 +44,7 @@ namespace DocumentTranslationService.Core
         {
             string uri = TextTransUri + "/detect?api-version=3.0";
             object[] body = new object[] { new { Text = input } };
-            using HttpClient client = new();
+            using HttpClient client = HttpClientFactory.GetHttpClient();
             using HttpRequestMessage request = new();
             client.Timeout = TimeSpan.FromSeconds(2);
             request.Method = HttpMethod.Post;
@@ -64,7 +65,8 @@ namespace DocumentTranslationService.Core
             if (response.StatusCode == System.Net.HttpStatusCode.OK)
             {
                 string detectResult = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                return detectResult;
+                JsonNode jsonDom = JsonNode.Parse(detectResult);
+                return jsonDom[0]!["language"].ToJsonString();
             }
             else
             {
@@ -83,14 +85,21 @@ namespace DocumentTranslationService.Core
         }
 
 
+
         public class DetectResult
         {
-            public string Language { get; set; }
-            public float Score { get; set; }
-            public bool IsTranslationSupported { get; set; }
-            public bool IsTransliterationSupported { get; set; }
-            public AltTranslations[] Alternatives { get; set; }
+            public DetectResultElement[] _ { get; set; }
         }
+
+        public class DetectResultElement
+        {
+            public string language { get; set; }
+            public float score { get; set; }
+            public bool isTranslationSupported { get; set; }
+            public bool isTransliterationSupported { get; set; }
+        }
+
+
         public class AltTranslations
         {
             public string Language { get; set; }
@@ -225,7 +234,7 @@ namespace DocumentTranslationService.Core
             string params_ = "&from=" + from + "&to=" + to;
             string uri = TextTransUri + path + params_;
             object[] body = new object[] { new { Text = text } };
-            using var client = new HttpClient();
+            using var client = HttpClientFactory.GetHttpClient();
             using var request = new HttpRequestMessage();
             request.Method = HttpMethod.Post;
             request.RequestUri = new Uri(uri);
@@ -271,11 +280,11 @@ namespace DocumentTranslationService.Core
             string path = "/breaksentence?api-version=3.0";
             string params_ = "&language=" + languagecode;
             string uri = TextTransUri + path + params_;
-            object[] body = new object[] { new { Text = text.Substring(0, (text.Length < Maxrequestsize) ? text.Length : Maxrequestsize) } };
+            object[] body = new object[] { new { Text = text[..((text.Length < Maxrequestsize) ? text.Length : Maxrequestsize)] } };
             string requestBody = JsonSerializer.Serialize(body);
             List<int> resultList = new();
 
-            using (HttpClient client = new())
+            using (HttpClient client = HttpClientFactory.GetHttpClient())
             using (HttpRequestMessage request = new())
             {
                 request.Method = HttpMethod.Post;
@@ -385,7 +394,7 @@ namespace DocumentTranslationService.Core
             IList<string> resultList = new List<string>();
             while (retrycount > 0)
             {
-                var client = new HttpClient();
+                var client = HttpClientFactory.GetHttpClient();
                 var request = new HttpRequestMessage();
                 client.Timeout = TimeSpan.FromSeconds(20);
                 request.Method = HttpMethod.Post;
